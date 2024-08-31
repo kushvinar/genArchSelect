@@ -1,0 +1,85 @@
+function (void)dumpFrequencies(object<Mutation> muts) {
+	if (muts.size())
+	{
+		freqs = sim.mutationFrequencies(NULL, muts);
+		coeffs = muts.selectionCoeff;
+		catn();
+		print(cbind(freqs, coeffs));
+	} }
+
+
+
+// setup sequence-based simulation
+initialize() {
+	defineConstant("L", 2e6);
+	initializeSLiMOptions(nucleotideBased=T);
+	initializeAncestralNucleotides(randomNucleotides(L));
+	
+	// mutation types
+	initializeMutationTypeNuc("m1", 0.5, "f", 0.0);
+	initializeMutationTypeNuc("m2", 0.5, "n", 0.0, 0.5);  // QTLs
+	
+	// m2 mutations should not be converted to substitutions on fixation
+	m2.convertToSubstitution = F;
+	
+	initializeGenomicElementType("g1", c(m1,m2), c(0.99,0.01), mmJukesCantor(1e-7/3));
+	initializeGenomicElement(g1, 0, L-1);
+	
+	rates = c(1e-8, 0.5, 1e-8);
+	ends = c(1e6 - 1, 1e6, 2e6 - 1);
+	initializeRecombinationRate(rates, ends);
+	//	initializeRecombinationRate(1e-8);
+
+}
+
+fitness(m2) { return 1.0; }
+
+1 {
+	sim.addSubpop("p1", 10000);
+}
+
+1: late() {
+	
+	// Phenotype trait value and fitness effects
+	inds = sim.subpopulations.individuals;
+	additive = inds.sumOfMutationsOfType(m2);
+	environ = rnorm(10000,0,1);
+	phenotypes = additive + environ;
+	Vp = var(phenotypes);
+	Va = var(additive);
+	Ve = var(environ);
+	h_sqrd = Va/Vp;
+	
+	
+	inds.fitnessScaling = 1.0 + dnorm(phenotypes, 10.0, 5.0);
+	
+	qtls = sim.mutationsOfType(m2);
+	numQTLS = sim.countOfMutationsOfType(m2);
+	numFxdQTLs = length(which(sim.mutationFrequencies(NULL, qtls) == 1));
+	
+	
+	// Output and check for termination
+	mean_phenotype = mean(phenotypes);
+	if (sim.generation % 100 == 0)
+	{
+		catn(sim.generation + ": \t" + mean_phenotype + "\t" + h_sqrd + "\t" + Va + "\t" + numQTLS + "\t" +  numFxdQTLs);
+		
+		//		catn(h_sqrd + "\t" + Va + "\t" + Ve + "\t" + Vp );
+		
+		//
+		//catn("Final phenotype == " + mean_phenotype);
+		
+		//sim.simulationFinished();
+	}
+	
+	//	else if (abs(mean_phenotype - 10.0) < 0.1)
+	//	{
+	//		catn("\n" + sim.generation + ": REACHED OPTIMUM");
+	//		dumpFrequencies(sim.mutationsOfType(m2));
+	//	}
+}
+
+2000 late() {
+	catn("\n" + sim.generation + ": End of Simulation");
+	dumpFrequencies(sim.mutationsOfType(m2));
+}

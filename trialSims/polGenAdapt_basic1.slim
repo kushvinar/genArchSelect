@@ -1,0 +1,111 @@
+function (void)dumpFrequencies(object<Mutation> muts) {
+	if (muts.size())
+	{
+		freqs = sim.mutationFrequencies(NULL, muts);
+		coeffs = muts.selectionCoeff;
+		catn();
+		print(cbind(freqs, coeffs));
+	} }
+
+
+
+// set up a simple neutral simulation
+initialize() {
+	initializeMutationRate(1e-7);
+	
+	// mutation types
+	initializeMutationType("m1", 0.5, "f", 0.0); // Neutral
+	initializeMutationType("m2", 0.5, "n", 0.0, 0.5);  // QTLs
+	
+	// m2 mutations should not be converted to substitutions on fixation
+	m2.convertToSubstitution = F;
+	
+	// g1 genomic element type: uses m1 for all mutations
+	initializeGenomicElementType("g1", c(m1,m2), c(0.999,0.001));
+	//initializeGenomicElementType("g2", c(m1,m2), c(0.9,0.1));
+	
+	// uniform chromosome of length 1 mb with uniform recombination
+	initializeGenomicElement(g1, 0, 1e6 - 1);
+	//initializeGenomicElement(g1, 0, 20000);
+	//initializeGenomicElement(g2, 20001, 30000);
+	//initializeGenomicElement(g1, 30001, 99999);
+	initializeRecombinationRate(1e-8);
+}
+
+fitness(m2) { return 1.0; }
+
+
+10000 late() {
+	// go back to generation 10000
+	sim.readFromPopulationFile("/tmp/slim_1654221997666.txt");
+	
+	// start a newly seeded run
+	setSeed(rdunif(1, 0, asInteger(2^62) - 1));
+	
+	sim.setValue("history1", NULL);
+	sim.setValue("history2", NULL);
+	defineConstant("pdfPath", writeTempFile("plot_", ".pdf", ""));
+	if (exists("slimgui"))
+		slimgui.openDocument(pdfPath);
+}
+
+10000: late() {
+	inds = sim.subpopulations.individuals;
+	additive = inds.sumOfMutationsOfType(m2);
+	environ = rnorm(size(inds),0,1);
+	phenotypes = additive + environ;
+	Vp = var(phenotypes);
+	Va = var(additive);
+	Ve = var(environ);
+	h_sqrd = Va/Vp;
+	
+	inds.fitnessScaling = 1.0 + dnorm(phenotypes, 5.0, 4.0);
+	
+	qtls = sim.mutationsOfType(m2);
+	numQTLS = sim.countOfMutationsOfType(m2);
+	numFxdQTLs = length(which(sim.mutationFrequencies(NULL, qtls) == 1));
+	
+	// Output and check for termination
+	mean_phenotype = mean(phenotypes);
+	
+	if (sim.generation % 10 == 0)
+	{
+		catn(sim.generation + ": \t" + mean_phenotype + "\t" + h_sqrd + "\t" + Va + "\t" + numQTLS + "\t" +  numFxdQTLs);
+		h1 = c(sim.getValue("history1"), mean_phenotype);
+		h2 = c(sim.getValue("history2"), h_sqrd);
+		sim.setValue("history1", h1);
+		sim.setValue("history2", h2);
+		
+		{
+			rstr = paste(c('{',
+				'par(mar=c(5, 4, 4, 6) + 0.3)',
+				'x <- seq(1,' + size(h1)*10 + ',10)',
+				'y1 <- c(' + paste(h1, sep=", ") + ')',
+				'y2 <- c(' + paste(h2, sep=", ") + ')',
+				'quartz(width=8, height=8, type="pdf", file="' + pdfPath + '")',
+				'plot(x=x, y=y1, xlab="", ylab="",xlim=c(1,500), ylim=c(-1, 11), type="l", col="black", axes=FALSE)',
+				'axis(2, ylim=c(-1,11),col="black",las=1)',
+				'mtext("Phenotype",side=2,line=1.5)',
+				'box()',
+				
+				'par(new=TRUE)',
+				'plot(x=x, y=y2, xlab="", ylab="", xlim=c(1,500), ylim=c(0,1), type="l", col="red", axes = FALSE)',
+				'mtext("Heritability",side=4,col="red",line=2)',
+				'axis(4, ylim=c(0,1), col="red",col.axis="red",las=3)',
+				'axis(1,pretty(range(x),10))',
+				'mtext("Generations",side=1,col="black",line=2)',
+				'dev.off()',
+				'}'), sep="\n");
+			scriptPath = writeTempFile("plot_", ".R", rstr);
+			system("/usr/local/bin/Rscript", args=scriptPath);
+		}
+	
+	}
+
+}
+
+
+10500 late() {
+	catn("\n" + sim.generation + ": End of Simulation");
+	dumpFrequencies(sim.mutationsOfType(m2));
+}
