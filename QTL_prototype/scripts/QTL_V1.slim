@@ -148,7 +148,7 @@ s2 1000000 late()
 	QTL1 = mutationLookup(ID[0]);
 	QTL2 = mutationLookup(ID[1]);
 	LD = measureLD(QTL1, QTL2);
-	distance = (QTL1.position)-(QTL2.position);
+	distance = abs((QTL1.position)-(QTL2.position));
 	
 	//printing info
 	catn(c("Freq of QTL1:", mutFreq(QTL1)));
