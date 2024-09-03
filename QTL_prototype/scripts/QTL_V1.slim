@@ -1,0 +1,165 @@
+// set up a simple neutral simulation
+initialize()
+{
+	//make it nucleotide based
+	defineConstant("L", 1e6);
+	initializeSLiMOptions(nucleotideBased=T);
+	initializeAncestralNucleotides(randomNucleotides(L));
+	
+	// mutation types
+	initializeMutationTypeNuc("m1", 0.5, "f", 0.0); // Neutral
+	initializeMutationTypeNuc("m2", 0.5, "n", 0.0, 0.5); // QTLs
+	
+	// m2 mutations should not be converted to substitutions on fixation
+	m2.convertToSubstitution = F;
+	
+	// g1 genomic element type: uses m1 for all mutations
+	initializeGenomicElementType("g1", c(m1, m2), c(0.999, 0.01), mmJukesCantor((1e-7) / 3)); //CHANGE THIS!!!
+	
+	// uniform chromosome of length 1 mb with uniform recombination
+	initializeGenomicElement(g1, 0, L - 1);
+	initializeRecombinationRate(1e-8);
+}
+
+mutationEffect(m2)
+{
+	return 1.0;
+}
+
+function (float)measureLD(o<Mutation> mut1, o<Mutation> mut2)
+{
+	pA = sim.mutationFrequencies(NULL, mut1);
+	pB = sim.mutationFrequencies(NULL, mut2);
+	
+	//calc haplotypic freq
+	Genomes = sim.subpopulations.genomes;
+	HaploCount = 0;
+	for (id in 0:(length(Genomes) - 1))
+	{
+		mut1Presence = Genomes[id].containsMutations(mut1);
+		mut2Presence = Genomes[id].containsMutations(mut2);
+		if (mut1Presence & mut2Presence)
+		{
+			HaploCount = HaploCount + 1;
+		}
+	}
+	D = (HaploCount / length(Genomes)) - (pA * pB);
+	if (D >= 0)
+	{
+		D_prime = (D) / (min((pA * (1 - pB)), ((1 - pA) * pB)));
+	}
+	if (D < 0)
+	{
+		D_prime = (D) / min((pA * pB), ((1 - pA) * (1 - pB)));
+	}
+	return D_prime;
+}
+
+function (o<Mutation>)mutationLookup(i ID)
+{
+	muts = sim.mutations;
+	for (i in 0:(length(muts) - 1))
+	{
+		if (muts[i].id == ID)
+		{
+			Mutation = muts[i];
+			break;
+		}
+	}
+	return Mutation;
+}
+
+function (float)mutFreq(o<Mutation> Mut)
+{
+	MutFreq = sim.mutationFrequencies(NULL, Mut);
+	return MutFreq;
+}
+
+function (numeric)haploCount(o<Mutation> Mut1, o<Mutation> Mut2)
+{
+	Genomes = sim.subpopulations.genomes;
+	HaploCount = 0;
+	for (id in 0:(length(Genomes) - 1))
+	{
+		mut1Presence = Genomes[id].containsMutations(Mut1);
+		mut2Presence = Genomes[id].containsMutations(Mut2);
+		if (mut1Presence & mut2Presence)
+		{
+			HaploCount = HaploCount + 1;
+		}
+	}
+	return HaploCount;
+}
+
+1 early()
+{
+	sim.addSubpop("p1", 500); //add population of 500 ind
+}
+
+1: late()
+{
+	inds = sim.subpopulations.individuals;
+	phenotypes = inds.sumOfMutationsOfType(m2);
+	scale = dnorm(5.0, 5.0, 1.0);
+	inds.fitnessScaling = 1.0 + dnorm(phenotypes, 5.0, 1.0) / scale;
+	
+	/*
+	if (community.tick % 10 == 0)
+	{ //print average phenotype every 10 gen
+		catn(c("Mean Phenotype:", mean(phenotypes)));
+	}
+	*/
+}
+
+1: late()
+{
+	phenotypes = sim.subpopulations.individuals.sumOfMutationsOfType(m2);
+	if (mean(phenotypes) > 0.5) //checks when mean phen reaches 0.5
+	{
+		defineGlobal("tick", community.tick);
+		community.rescheduleScriptBlock(s1, start=tick + 1, end=tick + 1); //tick*100000 so it essentially runs forever
+		community.deregisterScriptBlock(self); //removes script so it never runs again
+	}
+}
+
+s1 1000000 late() //scriptBlock to select 2 QTLs with freq above 0.1
+{
+	//finding freqs that are above 0.1
+	freqs = sim.mutationFrequencies(NULL, sim.mutationsOfType(m2));
+	test = which(freqs > 0.1); //returns index of values above 0.1
+	EstablishedQTLs = sim.mutationsOfType(m2)[test];
+	if (length(EstablishedQTLs) >= 2)
+	{
+		QTLs = sample(EstablishedQTLs, 2);
+	}
+	else
+	{
+		stop("LESS THAN 2 MUTATIONS");
+	}
+	IDs = QTLs.id;
+	defineGlobal("ID", IDs);
+	print(QTLs);
+	catn();
+	community.rescheduleScriptBlock(s2, start=tick + 2, end=tick + 20000);
+}
+
+s2 1000000 late()
+{ //scriptBlock to measure LD between QTLs
+	QTL1 = mutationLookup(ID[0]);
+	QTL2 = mutationLookup(ID[1]);
+	LD = measureLD(QTL1, QTL2);
+	distance = (QTL1.position)-(QTL2.position);
+	
+	//printing info
+	catn(c("Freq of QTL1:", mutFreq(QTL1)));
+	catn(c("Freq of QTL2:", mutFreq(QTL2)));
+	catn(c("Haplotype Freq:", haploCount(QTL1, QTL2)));
+	catn(c("LD using D':", LD));
+	catn();
+	
+	x = c((community.tick), LD, mutFreq(QTL1), mutFreq(QTL2), haploCount(QTL1, QTL2));
+
+	writeFile("C:/Users/kushv/genArchSelect/QTL_prototype/output_files/QTL_V1_" + getSeed() + ".txt", paste(x, sep=","), append=T);
+	writeFile("C:/Users/kushv/genArchSelect/QTL_prototype/output_files/QTL_V1_" + getSeed() + "_meta.txt", paste(c("Distance:", distance,"\nQTL_effect sizes:", QTL1.selectionCoeff, QTL2.selectionCoeff)));
+
+}

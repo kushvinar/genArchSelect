@@ -32,14 +32,14 @@ initialize() {
 	initializeRecombinationRate(1e-8);
 }
 
-fitness(m2) { return 1.0; }
+mutationEffect(m2) { return 1.0; }
 
 
 10000 late() {
 	// go back to generation 10000
 	sim.readFromPopulationFile("/tmp/slim_1654221997666.txt");
 	
-	// start a newly seeded run
+	// start a newly seeded run	
 	setSeed(rdunif(1, 0, asInteger(2^62) - 1));
 	
 	sim.setValue("history1", NULL);
