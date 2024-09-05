@@ -98,8 +98,13 @@ function (numeric)haploCount(o<Mutation> Mut1, o<Mutation> Mut2)
 
 1: late()
 {
+	//phenotype calculations	
 	inds = sim.subpopulations.individuals;
-	phenotypes = inds.sumOfMutationsOfType(m2);
+	additive = inds.sumOfMutationsOfType(m2);
+	defineGlobal("environment", rnorm(length(inds), 0, 1));
+	phenotypes = additive + environment;	
+	
+	
 	scale = dnorm(5.0, 5.0, 1.0);
 	inds.fitnessScaling = 1.0 + dnorm(phenotypes, 5.0, 1.0) / scale;
 	
@@ -114,10 +119,11 @@ function (numeric)haploCount(o<Mutation> Mut1, o<Mutation> Mut2)
 1: late()
 {
 	phenotypes = sim.subpopulations.individuals.sumOfMutationsOfType(m2);
-	if (mean(phenotypes) > 0.5) //checks when mean phen reaches 0.5
+	
+	if (mean(phenotypes) > 0.5) //checks when mean phenotype reaches 0.5
 	{
 		defineGlobal("tick", community.tick);
-		community.rescheduleScriptBlock(s1, start=tick + 1, end=tick + 1); //tick*100000 so it essentially runs forever
+		community.rescheduleScriptBlock(s1, start=tick + 1, end=tick + 1); 
 		community.deregisterScriptBlock(self); //removes script so it never runs again
 	}
 }
@@ -134,7 +140,7 @@ s1 1000000 late() //scriptBlock to select 2 QTLs with freq above 0.1
 	}
 	else
 	{
-		stop("LESS THAN 2 MUTATIONS");
+		stop("LESS THAN 2 QTLS EXIST IN TOTAL");
 	}
 	IDs = QTLs.id;
 	defineGlobal("ID", IDs);
@@ -143,8 +149,13 @@ s1 1000000 late() //scriptBlock to select 2 QTLs with freq above 0.1
 	community.rescheduleScriptBlock(s2, start=tick + 2, end=tick + 20000);
 }
 
-s2 1000000 late()
-{ //scriptBlock to measure LD between QTLs
+s2 1000000 late() //scriptBlock to measure LD between QTLs
+{ 
+	//measuring phenotype in local scope (doesn't call fitnessScaling)	
+	inds = sim.subpopulations.individuals;
+	additive = inds.sumOfMutationsOfType(m2);
+	phenotypes = additive + environment;	
+
 	QTL1 = mutationLookup(ID[0]);
 	QTL2 = mutationLookup(ID[1]);
 	LD = measureLD(QTL1, QTL2);
@@ -157,7 +168,15 @@ s2 1000000 late()
 	catn(c("LD using D':", LD));
 	catn();
 	
-	x = c((community.tick), LD, mutFreq(QTL1), mutFreq(QTL2), haploCount(QTL1, QTL2));
+	//measuring heritability
+	Vp = var(phenotypes);
+	Ve = var(environment);
+	Va = var(additive);
+	H_sqrd = Va/Vp;
+	
+		
+	
+	x = c((community.tick), LD, mutFreq(QTL1), mutFreq(QTL2), haploCount(QTL1, QTL2), H_sqrd);
 
 	writeFile("C:/Users/kushv/genArchSelect/QTL_prototype/output_files/QTL_V1_" + getSeed() + ".txt", paste(x, sep=","), append=T);
 	writeFile("C:/Users/kushv/genArchSelect/QTL_prototype/output_files/QTL_V1_" + getSeed() + "_meta.txt", paste(c("Distance:", distance,"\nQTL_effect sizes:", QTL1.selectionCoeff, QTL2.selectionCoeff)));

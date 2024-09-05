@@ -1,2 +1,0 @@
-Distance: 787766 
-QTL_effect sizes: -0.278217 0.328624
