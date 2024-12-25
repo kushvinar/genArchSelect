@@ -1,0 +1,160 @@
+// set up a simple neutral simulation
+initialize()
+{
+	//make it nucleotide based
+	defineConstant("L", 1e7);
+	defineConstant("N", 1000);
+	defineConstant("Mu", 1e-8);
+	initializeSLiMOptions(nucleotideBased=T);
+	initializeAncestralNucleotides(randomNucleotides(L));
+	
+	// mutation types
+	initializeMutationTypeNuc("m1", 0.5, "f", 0.0); // Neutral
+	initializeMutationTypeNuc("m2", 0.5, "n", 0.0, 0.5); // QTLs
+	
+	// m2 mutations should not be converted to substitutions on fixation
+	m2.convertToSubstitution = F;
+	
+	// g1 genomic element type: uses m1 for all mutations
+	initializeGenomicElementType("g1", c(m1, m2), c(0.999, 0.001), mmJukesCantor((Mu) / 3)); //CHANGE THIS!!!
+	
+	// uniform chromosome of length 1 mb with uniform recombination
+	initializeGenomicElement(g1, 0, L - 1);
+	initializeRecombinationRate(Mu);
+}
+
+mutationEffect(m2)
+{
+	return 1.0;
+}
+
+function (float)measureLD(o<Mutation> mut1, o<Mutation> mut2)
+{
+	pA = sim.mutationFrequencies(NULL, mut1);
+	pB = sim.mutationFrequencies(NULL, mut2);
+	
+	//calc haplotypic freq
+	Genomes = sim.subpopulations.genomes;
+	HaploCount = 0;
+	for (id in 0:(length(Genomes) - 1))
+	{
+		mut1Presence = Genomes[id].containsMutations(mut1);
+		mut2Presence = Genomes[id].containsMutations(mut2);
+		if (mut1Presence & mut2Presence)
+		{
+			HaploCount = HaploCount + 1;
+		}
+	}
+	D = (HaploCount / length(Genomes)) - (pA * pB);
+	if (D >= 0)
+	{
+		D_prime = (D) / (min((pA * (1 - pB)), ((1 - pA) * pB)));
+	}
+	if (D < 0)
+	{
+		D_prime = (D) / min((pA * pB), ((1 - pA) * (1 - pB)));
+	}
+	return D_prime;
+}
+
+function (o<Mutation>)mutationLookup(i ID)
+{
+	muts = sim.mutations;
+	for (i in 0:(length(muts) - 1))
+	{
+		if (muts[i].id == ID)
+		{
+			Mutation = muts[i];
+			break;
+		}
+	}
+	return Mutation;
+}
+
+function (float)mutFreq(o<Mutation> Mut)
+{
+	MutFreq = sim.mutationFrequencies(NULL, Mut);
+	return MutFreq;
+}
+
+function (numeric)haploCount(o<Mutation> Mut1, o<Mutation> Mut2)
+{
+	Genomes = sim.subpopulations.genomes;
+	HaploCount = 0;
+	for (id in 0:(length(Genomes) - 1))
+	{
+		mut1Presence = Genomes[id].containsMutations(Mut1);
+		mut2Presence = Genomes[id].containsMutations(Mut2);
+		if (mut1Presence & mut2Presence)
+		{
+			HaploCount = HaploCount + 1;
+		}
+	}
+	return HaploCount;
+}
+
+1 late()
+{
+	sim.readFromPopulationFile("/home/dn_stud2/kushal/genArchQTLs/SLiM_Scripts/output/8557819773694843164QTL_V2_He+Pheno_1k.txt");
+	tick = community.tick;
+	defineGlobal("tick", tick);
+	
+	//phenotype calculations
+        inds = sim.subpopulations.individuals;
+        additive = inds.sumOfMutationsOfType(m2);
+        defineGlobal("environment", rnorm(length(inds), 0, 1));
+        phenotypes = additive + environment;
+	
+	
+	burnInPheno = mean(phenotypes);
+	defineGlobal("burnInPheno", burnInPheno);
+	
+	
+	community.rescheduleScriptBlock(s1, start=tick + 1, end=tick + 1000000); //moving script below
+
+	
+}
+
+
+
+s1 1:10000000 late()
+{	
+	
+	//phenotype calculations
+        inds = sim.subpopulations.individuals;
+        additive = inds.sumOfMutationsOfType(m2);
+        defineGlobal("environment", rnorm(length(inds), 0, 1));
+        phenotypes = additive + environment;
+	
+
+	// selection
+	inds.fitnessScaling = 1.0 + dnorm(phenotypes, burnInPheno+5.0, 2);
+	QTLs = sim.mutationsOfType(m2);
+	print("Tick: " + community.tick);
+	catn();
+	print("Phenotype: " + mean(phenotypes));
+
+
+
+	if(community.tick % 10 == 0){
+
+		//phenotype info
+		writeFile("/home/dn_stud2/kushal/genArchQTLs/SLiM_Scripts/output/N_10k/" + getSeed() + "_QTL_2_3_He+Pheno_1k.csv", paste(community.tick, (var(additive)/var(phenotypes)),mean(phenotypes), sep = ","), append = T); 
+	
+
+		// allele frequencies
+		for (i in 0:(length(QTLs) -1))
+			{
+			if(length(QTLs)>0){
+			writeFile("/home/dn_stud2/kushal/genArchQTLs/SLiM_Scripts/output/N_10k/"+getSeed()+"_QTL_2_3_1k.csv", paste(community.tick, QTLs[i], 	mutFreq(QTLs[i]), sep = ","),append = T); 
+			}
+	}
+     
+}
+
+}
+
+
+
+	
+
