@@ -1,0 +1,157 @@
+initialize()
+{
+        //setting up constants
+        defineConstant("L", 1e7);
+        defineConstant("N", 10000);
+        defineConstant("Mu", 1e-8);
+
+        defineConstant("C", 5);
+        defineConstant("W", L/C);
+
+        //make it nucleotide based
+        initializeSLiMOptions(nucleotideBased=T);
+        initializeAncestralNucleotides(randomNucleotides(L));
+
+        // mutation types
+        initializeMutationTypeNuc("m1", 0.5, "f", 0.0); // Neutral
+
+        //script for generating bi-allelic effect size
+        scriptForQTLs = "if (runif(1) < 0.5) -1; else 1;";
+        initializeMutationTypeNuc("m2", 0.5, "n", 0, 0.5); // QTLs
+
+        // m2 mutations should not be converted to substitutions on fixation
+        m2.convertToSubstitution = F;
+
+        // g1 genomic element type: uses m1 for all mutations
+        initializeGenomicElementType("g1", m1, 1, mmJukesCantor((Mu) / 3)); //CHANGE THIS!!!
+        //initializeGenomicElementType("g2", m2, 1, mmJukesCantor((Mu)/3));
+        
+        pos = 0;
+        q = NULL;
+        for (i in 1:C){
+                initializeGenomicElement(g1, pos, pos+W-1);
+                pos = pos+W;
+
+
+                initializeGenomicElement(g2, pos, pos);
+                q = c(q, pos);
+                pos = pos + 1;
+
+                initializeGenomicElement(g1, pos, pos+W-1);
+                pos = pos+W;
+        }
+
+
+
+        pos = 0;
+        ends = NULL;
+        for (i in 1:(C+1))
+        {
+
+                ends = c(ends, asInteger(pos), asInteger(pos+1));
+
+                pos = pos + W;
+
+        }
+
+
+
+        ends = ends[c(2:(length(ends)-2))];
+        ends[length(ends)-1] = ends[length(ends)-1]-1;
+        catn();
+
+
+
+        rates = c(rep(c(1e-8, 0.5), C-1), 1e-8);
+
+
+        catn(rates);
+        catn(ends);
+
+
+        initializeRecombinationRate(rates, ends);
+}
+
+mutationEffect(m2)
+{
+        return 1.0;
+}
+
+function (float)mutFreq(o<Mutation> Mut)
+{
+        MutFreq = sim.mutationFrequencies(NULL, Mut);
+        return MutFreq;
+}
+
+1 early(){
+        sim.addSubpop("p1", N);
+        equilHZ = 4 * N * Mu;
+        defineGlobal("equilHZ", equilHZ);
+}
+
+1 late(){
+        QTLPos = asInteger(W/2);
+        g = sim.subpopulations.genomes;
+
+
+        for (i in 1:(C)){
+                print(QTLPos);
+
+                isPlus = asLogical(rbinom(size(g), 1, 0.1));
+                g[isPlus].addNewDrawnMutation(m2, QTLPos, nucleotide = "A");
+
+                QTLPos = asInteger(QTLPos + W);
+        }
+        print(sim.subpopulations.individuals.sumOfMutationsOfType(m2));
+        catn();
+        print(sim.mutationsOfType(m2));
+}
+
+2:10000000 late(){
+
+        calcHZ = calcHeterozygosity(p1.genomes);
+
+        //phenotype calculations
+        inds = sim.subpopulations.individuals;
+        additive = inds.sumOfMutationsOfType(m2);
+        defineGlobal("environment", rnorm(length(inds), 0, 1));
+        phenotypes = additive + environment;
+
+        if(community.tick % 25 == 0){
+        QTLs = sim.mutationsOfType(m2);
+                print("Current HZ at " + community.tick + ": " + calcHZ);                                                                                  >
+                print("4NMu: " + equilHZ);
+
+                // phenotype information
+                writeFile("~/kushal/genArchQTLs/SLiM_Scripts/FixedQTLs/"+getSeed()+"V1_Fixed_He+Pheno_"+N+"_"+C+".csv", paste(community.tick, (var(additive>
+
+                //allele freq information
+                for (i in 0:(length(QTLs) -1))
+                {
+                        if(length(QTLs)>0){
+                        writeFile("~/kushal/genArchQTLs/SLiM_Scripts/FixedQTLs/"+getSeed()+"V1_Fixed_"+N+"_"+C+".csv", paste(community.tick, QTLs[i], mutFr>
+                        }
+                }
+
+                        // haplotype information
+                for (i in 0:(length(QTLs) - 1))
+                        {
+                                if(length(QTLs)>0){
+                                x = sim.subpopulations.individuals.genomes.containsMutations(QTLs[i]);
+                                writeFile("~/kushal/genArchQTLs/SLiM_Scripts/FixedQTLs/"+getSeed()+"V1_Fixed_Haplotype_"+N+"_"+C+".csv",
+                                 paste(community.tick, QTLs[i], x, sep=","), append=T);
+                                }
+                        }
+        }
+
+        if (calcHZ > equilHZ){
+                print("Burn In complete");
+                //population state
+                sim.outputFull("~/kushal/genArchQTLs/SLiM_Scripts/FixedQTLs/"+getSeed()+"_V1_Fixed_BurnIn_"+C+".txt");
+
+                //variant information as vcf
+                sim.subpopulations.genomes.outputVCF("~/kushal/genArchQTLs/SLiM_Scripts/FixedQTLs/"+getSeed()+"_"+N+"_"+C+".vcf");
+
+                sim.simulationFinished();
+        }
+}
