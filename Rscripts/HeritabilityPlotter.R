@@ -1,9 +1,12 @@
 library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(cowplot)
 
 setwd("C:\\Users\\kushv\\genArchSelect\\QTL_finalModel_SURC/output_files/N_10k_L_10e7/withoutScale/")
-file = "7503075833640078399_QTL_3_He+Pheno_10k.csv"
+file = "3264789426475091028QTL_V2_He+Pheno_10k.csv"
 AlleleFile = "7503075833640078399_QTL_3_10k.csv"
-FitFunc = 'N = 10k, Low Selection'
+FitFunc = 'N = 10k'
 
 data = read.csv(file, header = F)
 names(data) = c("Tick", "Heritability", "Mean phenotype")
@@ -15,7 +18,8 @@ coeff = max(data$Heritability)/max(data$`Mean phenotype`)
 ggplot(data, aes(Tick)) + 
   geom_line(aes(y = Heritability/coeff, colour = "He")) + 
   geom_line(aes(y = `Mean phenotype`, colour = "Phe"))+
-  scale_color_manual(values = c(He = "black", Phe = "red"))+
+  # geom_line(data = as.data.frame(Expected), aes(x = Ticks, y = Expected, colour = 'Exp') )+
+  scale_color_manual(values = c(He = "black", Phe = "red", Exp = "Blue"))+
   scale_y_continuous(
     name = "Mean Phenotype",
     sec.axis = sec_axis(~.*coeff, name = "Heritability")
@@ -31,8 +35,8 @@ ggplot(data, aes(Tick)) +
         axis.title.y = element_text(size = 18))
 
 # Plotting segregating sites. Use list `AlleleFreqs` from LD_calc.R
-ggplot(data.frame(Ticks = Ticks, Sites = unlist(lapply(AlleleFreqs, nrow))), aes(Ticks, Sites))+
-  geom_line()+
+ggplot(data.frame(Ticks = as.numeric(Ticks), Sites = unlist(lapply(AlleleFreqs, nrow))), aes(Ticks, Sites))+
+  geom_point()+
   labs(title = FitFunc, y = "Number of QTLs") + 
   theme_bw()
 
@@ -78,7 +82,9 @@ data = pivot_wider(CombinedFrequencies, names_from = Tick, values_from = Freq)
 
 sum(data$`64250` == 1, na.rm = T)
 
-data = data[-which(data[,2] == 1),]
+data = data[,-c(2,3)]
+
+data = data[(data[,2] != 1), ]
 
 deltaPvalues = data.frame(Mutation = data$Mutation)
 
@@ -92,7 +98,15 @@ deltaPvalues_long = pivot_longer(deltaPvalues, !Mutation, names_to = "ticks", va
 
 ggplot(deltaPvalues_long, aes(x = ticks, 
                               y = values)) +
-         geom_boxplot(na.rm = T)
+         geom_boxplot(na.rm = T) + 
+  theme_bw()+
+  theme(axis.text.x = element_text(size = 12,
+                                    angle = 90),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_text(size = 18))+
+  labs(x = "Generations",
+       y = "Chnage in Allele Frequency")
+  
 
 
 SurcPlotter = function(PhenoFile, AlleleFile, FitFunc = "10k",FileName, Filter = NULL){
@@ -120,14 +134,16 @@ SurcPlotter = function(PhenoFile, AlleleFile, FitFunc = "10k",FileName, Filter =
     labs(y = "Mean Phenotype",
          x = "Generations") +
     theme_bw()+
-    theme(axis.title.y.left  = element_text(color = "red"),
-          legend.position = "none") +
-    theme(axis.text.x = element_text(angle = 90,
-                                     hjust = 1),
-          axis.title.x = element_text(size = 14),
-          axis.title.y = element_text(size = 14),
-          axis.title.y.left = element_text(size = 14))
-  
+    theme(axis.title.y.left = element_text(color = "red"),
+          legend.position = "none",
+          axis.title.x = element_text(size = 18),
+          axis.title.y.right = element_text(size = 18),
+          axis.title.y = element_text(size = 18),
+          axis.text.x = element_text(angle = 90,
+                                     hjust = 1,
+                                     size = 12),
+          axis.text.y.left = element_text(size = 12),
+          axis.text.y.right = element_text(size = 12))
   
   
   
@@ -163,9 +179,11 @@ SurcPlotter = function(PhenoFile, AlleleFile, FitFunc = "10k",FileName, Filter =
     labs(x = "Generations",
          y = "Allele frequencies")+
     theme(axis.text.x = element_text(angle = 90,
-                                     hjust = 1),
-          axis.title.x = element_text(size = 14),
-          axis.title.y = element_text(size = 14))
+                                     hjust = 1,
+                                     size = 12),
+          axis.title.x = element_text(size = 18),
+          axis.title.y = element_text(size = 18),
+          axis.text.y = element_text(size = 12))
   
   
   
@@ -219,8 +237,9 @@ SurcPlotter = function(PhenoFile, AlleleFile, FitFunc = "10k",FileName, Filter =
     theme_bw() + 
      theme(axis.text.x  = element_text(angle = 90,
                                       hjust = 1),
-           axis.title.x = element_text(size = 14),
-           axis.title.y = element_text(size = 14))
+           axis.title.x = element_text(size = 18),
+           axis.title.y = element_text(size = 18), 
+           axis.text.y = element_text(size = 12))
      
   
   
@@ -228,7 +247,7 @@ SurcPlotter = function(PhenoFile, AlleleFile, FitFunc = "10k",FileName, Filter =
   plt = plot_grid(a, b, c, ncol = 3)
   plot(plt)
   
-  save_plot(FileName, plot = plt, dpi = 900, base_height = 5, base_width = 21)
+  save_plot(FileName, plot = plt, dpi = 900, base_height = 9, base_width = 16)
 }
 
 deltaPvalues_long$ticks[seq(1, length(deltaPvalues_long$ticks), length.out = 8)]
@@ -357,7 +376,7 @@ curve(fitness2, 0, 10,
 # curve(fitness1, 0, 10, add = T, col = "blue")
 
 
-legend(6,1.235, 
+legend("topright", 
        legend = c("Low Selection", "High Selection"),
        col = c("red", "black"),
        pch = c(1),
@@ -365,8 +384,8 @@ legend(6,1.235,
        pt.cex = 1,
        cex = 2,
        text.col = "black",
-       horiz = F ,
-       )
+       horiz = FALSE,)
+
 
 
 
@@ -462,5 +481,52 @@ for(i in seq(2+generationwidth, ncol(Wide_Alleledata), generationwidth)){
 for (i in seq(13,130,counter) ){
   print(i)
   print(i-counter)
-  }
+}
+
+# Making fitness function graph
+x_vals <- seq(-10, 20, length.out = 500)
+fitness_data <- data.frame(
+  x = rep(x_vals, 2),
+  fitness = c(1.0 + dnorm(x_vals, 5, 2),
+              1.0 + dnorm(x_vals, 5, 4)),
+  selection = rep(c("High Selection", "Low Selection"), each = length(x_vals))
+)
+
+ggplot(fitness_data, aes(x = x, y = fitness, color = selection)) +
+  geom_line(size = 1.5) +
+  labs(x = "Phenotype", y = "Relative fitness", color = NULL) +
+  scale_color_manual(values = c("High Selection" = "black", "Low Selection" = "red")) +
+  theme_minimal(base_size = 16) +
+  theme(
+    legend.position = "right",  # default is right inside — we'll fix that below
+    legend.text = element_text(size = 14),
+    legend.title = element_blank(),
+    plot.margin = margin(20, 80, 20, 20)  # space for external legend
+  ) +
+  theme_bw()+
+  theme(
+  
+    legend.justification = c("left", "top"),
+    plot.margin = margin(20, 100, 20, 20)
+  )
+
+ggplot(fitness_data, aes(x = x, y = fitness, color = selection)) +
+  geom_line(size = 1.5) +
+  labs(x = "Phenotype", y = "Relative fitness") +
+  scale_color_manual(values = c("High Selection" = "black", "Low Selection" = "red")) +
+  theme_minimal(base_size = 16) +
+  theme_bw()+
+  theme(
+    legend.position = c(0.95, 0.95),  # inside top right
+    legend.justification = c("right", "top"),
+    legend.background = element_rect(fill = alpha("white", 0.6), color = NA),
+    legend.text = element_text(size = 18),
+    legend.title = element_blank(),
+    axis.title = element_text(size = 18),
+    axis.text = element_text(size = 18)
+  )+
+  scale_x_continuous(limits = c(-5, 15), breaks = seq(-5, 15, 1))
+
+
+
   

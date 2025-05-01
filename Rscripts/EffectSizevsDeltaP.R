@@ -2,7 +2,7 @@
 library(tidyverse)
 library(ggplot2)
 
-AlleleFile = files[1]
+AlleleFile = files[3]
 
 data = read.table(AlleleFile, sep = ",") # loading in the data
 colnames(data) = c("Tick", "Mutation", "Freq") # naming column headers
@@ -54,29 +54,36 @@ deltaPvalues_long = pivot_longer(deltaPvalues, !Mutation, names_to = "ticks", va
 ## Coercing ticks to numeric
 deltaPvalues_long$ticks = as.numeric(deltaPvalues_long$ticks)
 
-## Sorting by generations
-deltaPvalues_long = deltaPvalues_long %>%
-  arrange(ticks)
+# ## Sorting by generations
+# deltaPvalues_long = deltaPvalues_long %>%
+#   arrange(ticks)
 
 
 
 Ticks = unique(deltaPvalues_long$ticks)
 BreakTicks = Ticks[seq(1, length(Ticks)-1, length.out = 8)]
 
-# Extracting effect sizes
-deltaPvalues_long$EffectSize = as.numeric(gsub(".*:(-?[0-9.]+)>.*", "\\1", deltaPvalues_long$Mutation))
-
 # Note: if median is NA, that means the mutation existed for only one generation
-finalData = deltaPvalues_long %>%
+
+finalData <- deltaPvalues_long %>%
   group_by(Mutation) %>%
-  summarise(median = median(values, na.rm = T), EffectSize = median(EffectSize)) %>%
-  filter(!is.na(median))
+  summarise(
+    max_abs = values[which.max(abs(values))],
+  ) %>%
+  filter(!is.na(max_abs)) # Ensure no NA values in the result
+
+# Extracting effect sizes
+finalData$EffectSize = as.numeric(gsub(".*:(-?[0-9.]+)>.*", "\\1", finalData$Mutation))
+
 
 # Final Plot
 ggplot(data = finalData,
        aes(x = EffectSize,
-           y = median))+
+           y = max_abs))+
   geom_point()+
   labs(x = "Effect size of mutation",
-       y = "Median Allele Frequency Change",
-       title = AlleleFile)
+       y = "Largest AlleleFrequency Change",
+       title = paste0(AlleleFile, "     ",
+                      paste0("slope= ",coef(lm(finalData$max_abs~finalData$EffectSize))[2])))+
+  geom_smooth(method = "lm", se = F)+
+  theme_bw()

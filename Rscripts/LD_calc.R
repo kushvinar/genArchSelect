@@ -1,9 +1,10 @@
 library(dplyr)
 library(tidyverse)
+library(data.table)
 
-setwd("C:\\Users\\kushv\\genArchSelect\\QTL_prototype\\output_files\\QTL_V2\\N_1k\\2Mil")
-HaploFile = ""
-
+setwd("C:\\Users\\kushv\\genArchSelect\\QTL_finalModel_SURC/output_files/N_10k_L_10e7/")
+HaploFile = "2612611001178601127QTL_V2_HaplotypeCount_10k.csv"
+AlleleFile = "2612611001178601127QTL_V2_10k.csv"
 
 
 # Functions -------
@@ -23,7 +24,7 @@ HaploCount <- function(HaploFreq){
   stopifnot(is.data.frame(HaploFreq))
   
   
-  NumLoci = length(HaploFreq)-1
+  NumLoci = length(HaploFreq)
   FinalValues = c()
   
   for (i in 1:NumLoci){
@@ -70,6 +71,25 @@ HaploCompile <- function(HaploHisto, Frequencies){
 
 # Obtaining Haplo Frequency -------------------
 
+LastGen = F
+n = 1
+
+while (LastGen == F){
+  line = readLines(HaploFile, n = n)
+  line = unlist(strsplit(line, split = ","))
+  
+  if (as.integer(line[1]) == max(Ticks)){
+    print(line)
+    cat("\n")
+    LastGen = T
+  }
+  n = n+1
+  print(n)
+  # if (n == 10){
+  #   LastGen = T
+  # }
+}
+
 lines = readLines(HaploFile, n = -1) # Read File
 data = as.data.frame(strsplit(lines, split = ","))
 
@@ -85,6 +105,8 @@ for (tick in 1:length(Ticks)){
 
 SplitData = lapply(SplitData, colHeader, 2)
 rownames(SplitData) = NULL
+
+# SplitData[[1]][,colnames(SplitData[[1]]) %in% positive$Mutation]
 
 
 SplitHaplotypes = vector(mode = "list", length = length(Ticks))
@@ -125,13 +147,14 @@ names(HaploFreqs) = Ticks
 
 
 # Obtaining Allele Frequency ----
-AlleleFile = "1092303715383681055_QTL_2_10k.csv"
-data = read.table(AlleleFile, sep = ",")
-colnames(data) = c("Tick", "Mutation", "Freq")
 
-Ticks = unique(unlist(data[,1]))
-SplitData = vector(mode = "list", length = length(Ticks))
+data = read.table(AlleleFile, sep = ",") 
+colnames(data) = c("Tick", "Mutation", "Freq") # Assign column headers
 
+Ticks = unique(unlist(data[,1])) # Find the unique list of generations
+SplitData = vector(mode = "list", length = length(Ticks)) # Pre-allocating memory
+
+# Splitting data into a list. Each element of a list represents a generation
 for (i in 1:length(Ticks)){
   SplitData[[i]] = data[data$Tick==Ticks[i],]  
 }
@@ -140,13 +163,15 @@ names(SplitData) = Ticks
 
 AlleleFreqs = SplitData
 
+# Extracting effect size data from the Mutation ID (<MutID:EffectSize>)
 AlleleFreqs = lapply(AlleleFreqs, function(x){
   x$SelCoeff = as.numeric(gsub(".*:(-?[0-9.]+)>.*", "\\1", x$Mutation))
   x$WeightedContribution = x$SelCoeff * x$Freq
   return(x)
 })
 
-Expected = unlist(lapply(AlleleFreqs, function(x)2*mean(x$WeightedContribution)))
+# Calculating the weighted mean phenotype and plotting it
+Expected = unlist(lapply(AlleleFreqs, function(x)2*sum(x$WeightedContribution)))
 ggplot(as.data.frame(Expected), aes(x = Ticks, y = Expected)) + geom_line()
 # Calculating D' ----
 
@@ -156,7 +181,7 @@ pApB = list()
 pAB = list()
 Dmax = list()
 for (i in 1:length(Ticks)){
-  pAB[[i]] = HaploFreqs[[i]]/2000 
+  pAB[[i]] = HaploFreqs[[i]]/(N)
   
   
   
@@ -233,3 +258,13 @@ D
 Dmax
 
 Dprime
+
+Dprime = as.data.frame(Dprime[[1]])
+Dprime = rownames_to_column(Dprime, var = "POS_A")
+DprimeLong = pivot_longer(cols = -POS_A, data = Dprime, names_to = "POS_B", values_to = "DPRIME")
+DprimeLong = filter(DprimeLong, DprimeLong$DPRIME <=1)
+DprimeLong = filter(DprimeLong, DprimeLong$DPRIME>= -1)
+
+ggplot(DprimeLong, aes(POS_A, POS_B, fill = DPRIME, color = DPRIME))+
+  geom_tile()+
+  theme(axis.text.x = element_text(angle = 75, hjust = 1, vjust = 0.5))
